@@ -5,9 +5,6 @@ environment '
       g.view_specs = false
     end
 '
-environment 'config.time_zone = "UTC"'
-environment 'config.action_dispatch.x_sendfile_header = "X-Accel-Redirect"', env: "production"
-environment 'config.static_cache_control = "public, max-age=31449600" # 1 year', env: "production"
 
 # Setup configuration
 create_file "config/application.yml" do <<-FILE
@@ -36,7 +33,7 @@ end
 inject_into_file "Gemfile", after: "source 'https://rubygems.org'" do <<-FILE
 
 
-ruby "2.1.1"
+ruby "2.1.5"
 FILE
 end
 
@@ -53,13 +50,8 @@ gem_group :development do
   gem "quiet_assets"
 end
 
-gem_group :production do
-  gem "rails_12factor"
-  gem "heroku-deflater"
-end
-
 gem "font-awesome-rails"
-gem "passenger"
+gem "unicorn"
 gem "bootstrap-sass"
 gem "so_meta"
 gem "local_time"
@@ -67,10 +59,6 @@ gem "local_time"
 run "bundle install"
 run "bundle exec spring binstub --all"
 
-create_file "Procfile" do <<-FILE
-web: bundle exec passenger start -p $PORT --max-pool-size 3
-FILE
-end
 
 create_file "app/assets/javascripts/init.js.coffee" do <<-FILE
 window.App ||= {}
@@ -94,94 +82,6 @@ FILE
 end
 
 remove_file "app/assets/stylesheets/application.css"
-
-# Optional things
-#
-# Email
-if yes?("Email?")
-  create_file "config/initializers/setup_email.rb" do <<-FILE
-ActionMailer::Base.smtp_settings = {
-  :user_name => ENV["SENDGRID_USERNMAE"],
-  :password => ENV["SENDGRID_PASSWORD"],
-  :domain => ENV["EMAIL_DOMAIN"],
-  :address => "smtp.sendgrid.net",
-  :port => 587,
-  :authentication => :plain,
-  :enable_starttls_auto => true
-}
-
-# ActionMailer::Base.asset_host = "http://domain.com" if Rails.env.production?
-
-ActionMailer::Base.default_url_options = {
-  host: ENV["EMAIL_DOMAIN"],
-  only_path: false
-}
-
-if Rails.env.development?
-  class OverrideMailRecipient
-    def self.delivering_email(mail)
-      mail.to = ENV["EMAIL_OVERRIDE"]
-    end
-  end
-  ActionMailer::Base.register_interceptor(OverrideMailRecipient)
-end
-FILE
-  end
-
-  inject_into_file "config/application.yml", before: "development" do <<-FILE
-  SENDGRID_USERNAME:
-  SENDGRID_PASSWORD:
-  EMAIL_DOMAIN:
-
-  EMAIL_OVERRIDE:
-
-FILE
-  end
-
-end
-
-# Sidekiq
-if yes?("Sidekiq?")
-  gem 'sidekiq', require: "sidekiq/web"
-  gem 'sinatra'
-
-  create_file "config/initializers/sidekiq.rb" do <<-FILE
-if Rails.env.production?
-  Sidekiq::Web.use(Rack::Auth::Basic) do |user, password|
-    user == ENV["SIDEKIQ_USERNAME"] && password == ENV["SIDEKIQ_PASSWORD"]
-  end
-end
-
-Sidekiq.logger = Rails.logger
-FILE
-  end
-
-  create_file "app/workers/email_worker.rb" do <<-FILE
-
-class EmailWorker
-  include Sidekiq::Worker
-
-  def perform(klass, name, *args)
-    klass.constantize.send(name.to_sym, *args).deliver
-  end
-end
-FILE
-  end
-
-  inject_into_file "config/application.yml", before: "development" do <<-FILE
-  SIDEKIQ_USERNAME:
-  SIDEKIQ_PASSWORD:
-
-FILE
-  end
-
-  append_file "Procfile" do <<-FILE
-worker: bundle exec sidekiq
-FILE
-  end
-
-  run "bundle install"
-end
 
 git :init
 append_file ".gitignore", "config/application.yml"
