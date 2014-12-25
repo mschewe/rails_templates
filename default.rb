@@ -77,6 +77,7 @@ gem "autoprefixer-rails"
 
 run "bundle install"
 run "bundle exec spring binstub --all"
+run "bundle binstubs rspec-core"
 run "spring stop"
 run "rails generate rspec:install"
 
